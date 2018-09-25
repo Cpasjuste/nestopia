@@ -37,6 +37,10 @@
 #include <archive.h>
 #include <archive_entry.h>
 
+#ifdef __NST_UNZIP__
+#include <minizip/unzip.h>
+#endif
+
 // Nst Common
 #include "nstcommon.h"
 #include "config.h"
@@ -227,6 +231,97 @@ bool nst_archive_checkext(const char *filename) {
 	return false;
 }
 
+#ifdef __NST_UNZIP__
+
+bool nst_archive_select_file(const char *filename, char *reqfile, size_t reqsize) {
+
+    unzFile zip = unzOpen(filename);
+    if (!zip) {
+        return false;
+    }
+
+    if (unzGoToFirstFile(zip) == UNZ_OK) {
+        do {
+            if (unzOpenCurrentFile(zip) == UNZ_OK) {
+                unz_file_info fileInfo;
+                memset(&fileInfo, 0, sizeof(unz_file_info));
+                if (unzGetCurrentFileInfo(zip, &fileInfo, nullptr, 0, nullptr, 0, nullptr, 0) == UNZ_OK) {
+                    char *name = (char *) malloc(fileInfo.size_filename + 1);
+                    unzGetCurrentFileInfo(zip, &fileInfo, name, fileInfo.size_filename + 1, nullptr, 0, nullptr, 0);
+                    name[fileInfo.size_filename] = '\0';
+                    if (nst_archive_checkext(name)) {
+                        snprintf(reqfile, reqsize, "%s", name);
+                        free(name);
+                        unzClose(zip);
+                        return true;
+                    }
+
+                    free(name);
+                }
+
+                unzCloseCurrentFile(zip);
+            }
+        } while (unzGoToNextFile(zip) == UNZ_OK);
+    }
+
+    unzClose(zip);
+
+    return false;
+}
+
+bool nst_archive_open(const char *filename, char **rom, int *romsize, const char *reqfile) {
+
+    unzFile zip = unzOpen(filename);
+    if (!zip) {
+        return false;
+    }
+
+    if (unzGoToFirstFile(zip) == UNZ_OK) {
+        do {
+            if (unzOpenCurrentFile(zip) == UNZ_OK) {
+                unz_file_info fileInfo;
+                memset(&fileInfo, 0, sizeof(unz_file_info));
+                if (unzGetCurrentFileInfo(zip, &fileInfo, nullptr, 0, nullptr, 0, nullptr, 0) == UNZ_OK) {
+                    char *name = (char *) malloc(fileInfo.size_filename + 1);
+                    unzGetCurrentFileInfo(zip, &fileInfo, name, fileInfo.size_filename + 1, nullptr, 0, nullptr, 0);
+                    name[fileInfo.size_filename] = '\0';
+
+                    if (nst_archive_checkext(name)) {
+
+                        nst_set_paths(name);
+                        // If there's a specific file we want, load it
+                        if (reqfile != nullptr) {
+                            if (!strcmp(name, reqfile)) {
+                                *rom = (char *) malloc(fileInfo.uncompressed_size);
+                                *romsize = (int) fileInfo.uncompressed_size;
+                                unzReadCurrentFile(zip, *rom, (unsigned int) fileInfo.uncompressed_size);
+                                free(name);
+                                unzClose(zip);
+                                return true;
+                            }
+                        } else {
+                            *rom = (char *) malloc(fileInfo.uncompressed_size);
+                            *romsize = (int) fileInfo.uncompressed_size;
+                            unzReadCurrentFile(zip, *rom, (unsigned int) fileInfo.uncompressed_size);
+                            free(name);
+                            unzClose(zip);
+                            return true;
+                        }
+                    }
+
+                    free(name);
+                }
+
+                unzCloseCurrentFile(zip);
+            }
+        } while (unzGoToNextFile(zip) == UNZ_OK);
+    }
+
+    unzClose(zip);
+
+    return false;
+}
+#else
 bool nst_archive_select_file(const char *filename, char *reqfile, size_t reqsize) {
 	// Select a filename to pull out of the archive
 	struct archive *a;
@@ -317,6 +412,7 @@ bool nst_archive_open(const char *filename, char **rom, int *romsize, const char
 	}
 	return false;
 }
+#endif
 
 void nst_db_load() {
 	Nes::Api::Cartridge::Database database(emulator);
