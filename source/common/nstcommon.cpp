@@ -34,11 +34,11 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include <archive.h>
-#include <archive_entry.h>
-
 #ifdef __NST_UNZIP__
 #include <minizip/unzip.h>
+#else
+#include <archive.h>
+#include <archive_entry.h>
 #endif
 
 // Nst Common
